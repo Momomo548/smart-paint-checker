@@ -143,19 +143,20 @@ def MissingPaint_Detection_System(psd, color, tolerance, circle_radius, max_regi
     #既存のPSDファイルのレイヤーを合成
     existing_layers = psd.topil()
     #背景と合成して最終画像を作成
-    result_img = Image.alpha_composite(background_img_rgba, existing_layers.convert("RGBA"))
+    result_image = Image.alpha_composite(background_img_rgba, existing_layers.convert("RGBA"))
+
     #蛍光色の領域を検出
-    img_array = np.array(result_img.convert("RGB"))
+    img_array = np.array(result_image.convert("RGB"))
     r, g, b = color
     mask = np.all(np.abs(img_array - np.array([r, g, b])) <= tolerance, axis=-1)
     #連結した領域を結合し、ラベリング
     labeled_array, num_features = label(mask)
     #領域サイズの確認と円の描画
-    draw = ImageDraw.Draw(result_img)
+    draw = ImageDraw.Draw(result_image)
     for region_num in range(1, num_features + 1):
         region_mask = (labeled_array == region_num)
         region_size = np.sum(region_mask)
-        if region_size <= max_region_size:
+        if region_size <= 10000:
             region_indices = np.argwhere(region_mask)
             y_min, x_min = region_indices.min(axis=0)
             y_max, x_max = region_indices.max(axis=0)
@@ -164,14 +165,22 @@ def MissingPaint_Detection_System(psd, color, tolerance, circle_radius, max_regi
             draw.ellipse(
                 (center_x - circle_radius, center_y - circle_radius,
                  center_x + circle_radius, center_y + circle_radius),
-                outline=(0, 255, 0), width=2)
-    return result_img
+                outline=(0, 255, 0), width=10)
+    return result_image
 
 def LineDrawingMistake_Detection_System(psd, line, threshold):
 #仮引数：psdファイル、線画画像、検知箇所の統合判定距離
+    LINE_COLOR = [0, 255, 0, 255]  # 緑
+    THRESHOLD_BINARY = 200
+    AREA_MIN = 1
+    AREA_MAX = 10000
+    CIRCLE_RADIUS = 50
+    CIRCLE_THICKNESS = 10
+    CIRCLE_COLOR = (255, 0, 0)
+
     #線画の色を緑色に変更
     line_np = np.array(line)
-    line_color = [0, 255, 0, 255]
+    line_color = LINE_COLOR
     #線画部分（アルファ値が0でない部分）を緑色に変更
     mask = line_np[:, :, 3] > 0
     line_np[mask] = line_color
@@ -180,14 +189,14 @@ def LineDrawingMistake_Detection_System(psd, line, threshold):
     #グレースケールに変換
     line_gray = cv2.cvtColor(line_bgr, cv2.COLOR_BGR2GRAY)
     #二値化（150を閾値に設定）
-    ret, binary = cv2.threshold(line_gray, threshold, 255, cv2.THRESH_BINARY)
+    ret, binary = cv2.threshold(line_gray, THRESHOLD_BINARY, 255, cv2.THRESH_BINARY)
     #線画の輪郭の検出
     contours, hierarchy = cv2.findContours(
         binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE
     )
     #輪郭の描画
     img_blank = np.ones_like(line_bgr, dtype=np.uint8) * 255
-    contours_img = cv2.drawContours(img_blank , contours, -1, color=(0, 0, 255), thickness=5)
+    contours_img = cv2.drawContours(img_blank , contours, -1, color=(0, 0, 255), thickness=4)
     #検知箇所の座標
     circle_centers = []
     #近い線画を合成後の検知箇所の座標
@@ -199,7 +208,7 @@ def LineDrawingMistake_Detection_System(psd, line, threshold):
         (x, y), radius = cv2.minEnclosingCircle(cnt)
         center = (int(x), int(y))
         area = cv2.contourArea(cnt)
-        if (10 < area < 100 ):
+        if (AREA_MIN < area < AREA_MAX ):
             circle_centers.append(center)
     #重複検出と円描画
     for i, center1 in enumerate(circle_centers):
@@ -212,7 +221,7 @@ def LineDrawingMistake_Detection_System(psd, line, threshold):
         if not check:
             filtered_centers.append(center1)
     for center in filtered_centers:
-        cv2.circle(contours_img, center, 50, (255, 0, 0), 10)
+        cv2.circle(contours_img, center, CIRCLE_RADIUS, CIRCLE_COLOR, CIRCLE_THICKNESS)
         count+=1
     result_img = Image.fromarray(contours_img.astype(np.uint8))
     return result_img
@@ -267,7 +276,7 @@ if selected == 'HOME':
     そこで本研究では、画像処理技術を用いて「塗り漏れ」「はみ出し」「消し忘れ」ミスを自動的に検知、または発見を支援する方式を提案する。  
     さらに、これらの方式に基づいてイラストの着色チェックツール「Smart Paint Checker」を開発することで、ミスチェック作業の効率化とクリエイターの負担軽減を図ることを目的とする。
     ''', unsafe_allow_html=True)
-    st.image('./Images/ミス一覧.png', width=700) 
+    st.image('./Images/miss.png', width=700) 
     
     st.markdown('''
     <p class='my-text'>開発体制</p>
@@ -305,9 +314,9 @@ if selected == '機能詳細と使用例':
     イラストファイルとカラーを指定することで、イラスト内でそのカラーが使用されている箇所のみを表示する機能である。  
     また、塗りの濃さが異なる場合を考慮し、RGB各値に許容範囲（±）を指定することや複数のカラーを同時に指定することも可能である。  
     ''', unsafe_allow_html=True)
-    st.image('./Images/指定カラー表示_機能内容.png', width=700) 
+    st.image('./Images/color_display.png', width=700) 
     st.markdown('''<p class='box'>使用例</p>''', unsafe_allow_html=True)
-    st.image('./Images/指定カラー表示_使用例.png', width=700) 
+    st.image('./Images/color_display_ex.png', width=700) 
     
     #機能２
     st.markdown('''
@@ -317,10 +326,10 @@ if selected == '機能詳細と使用例':
     イラストファイルとレイヤーを指定することで、そのレイヤー画像と輪郭を表示する機能である。  
     また、レイヤー画像を非表示にして輪郭のみを表示することや複数のレイヤーを同時に指定することも可能である。
     ''', unsafe_allow_html=True)
-    st.image('./Images/指定レイヤー輪郭表示_機能内容.png', width=700) 
+    st.image('./Images/layer_display.png', width=700) 
     st.markdown('''<p class='box'>使用例</p>''', unsafe_allow_html=True)
-    st.image('./Images/指定レイヤー輪郭表示_使用例１.png', width=700) 
-    st.image('./Images/指定レイヤー輪郭表示_使用例２.png', width=700) 
+    st.image('./Images/layer_display_ex1.png', width=700) 
+    st.image('./Images/layer_display_ex2.png', width=700) 
     
     #機能３
     st.markdown('''
@@ -330,7 +339,7 @@ if selected == '機能詳細と使用例':
     イラストファイルを指定することで、新たな色の背景を追加し、透過した塗り漏れを検知して円で囲む機能である。  
     また、背景色や円の大きさ、塗り漏れと判定する許容値を指定することも可能である。
     ''', unsafe_allow_html=True)
-    st.image('./Images/塗り漏れ検知_機能内容.png', width=700) 
+    st.image('./Images/missing_paint.png', width=700) 
     
     #機能４
     st.markdown('''
@@ -340,7 +349,7 @@ if selected == '機能詳細と使用例':
     イラストファイルと線画レイヤーを指定することで、線画の消し忘れ箇所を検知し円で囲む機能である。  
     また、検知機能の強さを指定可能であり、値が低いほど厳しく検知出来る
     ''', unsafe_allow_html=True)
-    st.image('./Images/消し忘れ検知_機能内容.png', width=700) 
+    st.image('./Images/missing_lines.png', width=700) 
     
 #=================================================================
 # ツールを使用する画面
@@ -542,7 +551,7 @@ if selected == 'ツールを使用する':
                             result_img1.save(result_buf1, format='PNG')
                             result_buf1.seek(0)
                             #zipファイルに追加
-                            zip_file.writestr('指定カラー表示システム.png', result_buf1.getvalue())
+                            zip_file.writestr('colorDisplaySystem_result.png', result_buf1.getvalue())
                     
                         #指定レイヤー輪郭表示システム
                         elif function == 'Layers_Contour_System':
@@ -601,15 +610,15 @@ if selected == 'ツールを使用する':
                             result_img2.save(result_buf2, format='PNG')
                             result_buf2.seek(0)
                             #zipファイルに追加
-                            zip_file.writestr('指定レイヤー輪郭表示システム.png', result_buf2.getvalue())
+                            zip_file.writestr('layerDisplaySystem_result.png', result_buf2.getvalue())
                             
                         #塗り漏れ検知システム
                         elif function == 'MissingPaint_Detection_System':
                             st.markdown('''
                             <p class='my-text'>塗り漏れ検知システム</p> 
                             <p class='box'>各値の調整</p>''', unsafe_allow_html=True)
-                            tolerance = st.slider('###### 「塗り漏れ」と判定する色の許容誤差を調整できます。',0,20,3)
-                            circle_radius = st.slider('###### 「塗り漏れ」判定箇所の円の半径を調整できます。',10,30,15)
+                            tolerance = st.slider('###### 「塗り漏れ」と判定する色の許容誤差を調整できます。',0,50,5)
+                            circle_radius = st.slider('###### 「塗り漏れ」判定箇所の円の半径を調整できます。',10,100,50)
                             max_region_size = st.slider('###### 「塗り漏れ」と判定する領域のサイズを調整できます。',100,1000,500)
                             st.markdown('''<p class='box'>各素材の色を選択</p>''', unsafe_allow_html=True)
                             color2 = st.color_picker('###### 「塗り漏れ」検出箇所の色が変化します。', '#FF00FF')
@@ -626,14 +635,14 @@ if selected == 'ツールを使用する':
                             result_img3.save(result_buf3, format='PNG')
                             result_buf3.seek(0)
                             #zipファイルに追加
-                            zip_file.writestr('塗り漏れ検知システム.png', result_buf3.getvalue())
+                            zip_file.writestr('missingPaintDetectionSystem_result.png', result_buf3.getvalue())
                         
                         #消し忘れ検知システム
                         elif function == 'LineDrawingMistake_Detection_System':
                             st.markdown('''
                             <p class='my-text'>消し忘れ検知システム</p>
                             <p class='box'>各値の調整</p>''', unsafe_allow_html=True)
-                            threshold2 = st.slider('###### 各検知箇所を統合する距離を調整できます。',1,300,200)
+                            threshold2 = st.slider('###### 各検知箇所を統合する距離を調整できます。',1,300,95)
                             #機能の実行
                             result_img4 = LineDrawingMistake_Detection_System(psd, line_img, threshold2)
                             st.markdown('''<p class='box2'>消し忘れ検知システムの出力結果</p>''', unsafe_allow_html=True)
@@ -647,7 +656,7 @@ if selected == 'ツールを使用する':
                             result_img4.save(result_buf4, format='PNG')
                             result_buf4.seek(0)
                             #zipファイルに追加
-                            zip_file.writestr('消し忘れ検知システム.png', result_buf4.getvalue())      
+                            zip_file.writestr('missingLinesDetectionSystem_result.png', result_buf4.getvalue())      
                 zip_buffer.seek(0)
                 #ダウンロードボタンの表示
                 st.download_button(
