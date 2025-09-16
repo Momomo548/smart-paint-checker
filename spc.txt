@@ -1,1 +1,1 @@
-python -m streamlir run smart_paint_checker.py
+python -m streamlit run Smart-Paint-Checker.py
