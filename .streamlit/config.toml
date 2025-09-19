@@ -12,3 +12,9 @@ secondaryBackgroundColor = "#E0E0E0"
 textColor = "#000000"
 #フォント
 font = "serif"
+
+#==============================
+#サーバー設定
+#==============================
+[server]
+maxUploadSize = 1000
