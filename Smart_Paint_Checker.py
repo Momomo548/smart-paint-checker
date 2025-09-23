@@ -12,6 +12,7 @@ from scipy.ndimage import label
 from io import BytesIO
 import zipfile
 import hashlib
+from streamlit_image_select import image_select
 
 from functions import (
     MissingPaint_Detection_System,
@@ -280,29 +281,46 @@ if selected == 'ツールを使用する':
             #レイヤー一覧の表示
             st.text(f'レイヤー数:{layer_number}')
             cols = st.columns(10)
-            for i, img in enumerate(img_list):
-                col = cols[i % 10]
-                col.image(img, caption=name_list[i], use_container_width=True)
-            
-            #========================================
-            # 「線画レイヤーの選択」
-            #========================================
-            #セッション変数の初期化（線画レイヤーの選択用）
+            selected_layers = []
+
             if "selected_layers" not in st.session_state:
                 st.session_state.selected_layers = []
+                
+
+            for i, img in enumerate(img_list):
+                col = cols[i % 10]
+                with col:
+                    st.image(img, caption=name_list[i], use_container_width=True)
+
+                    checked = st.checkbox("線画選択", key=f"layer_chk_{i}")
+                    layer_name = name_list[i]
+
+                    if checked and layer_name not in st.session_state.selected_layers:
+                        st.session_state.selected_layers.append(layer_name) # 選択されたレイヤーを追加
+                    elif not checked and layer_name in st.session_state.selected_layers:
+                        st.session_state.selected_layers.remove(layer_name) # 選択解除されたレイヤーを削除
+
+
+            st.markdown("### 選択された線画レイヤー")
+            if st.session_state.selected_layers:
+                selected_cols = st.columns(10)  # 5列で並べて表示
+                for idx, layer_name in enumerate(st.session_state.selected_layers):
+                    # name_list からインデックスを取得
+                    layer_idx = name_list.index(layer_name)
+                    with selected_cols[idx % 5]:
+                        st.image(img_list[layer_idx], caption=layer_name, use_container_width=True)
+            else:
+                st.info("まだレイヤーが選択されていません。")
+            selected_layers = st.session_state.selected_layers
+
             if "line_img" not in st.session_state:
                 st.session_state.line_img = None
             #レイヤーの選択
-            selected_layers = st.multiselect(
-                '###### ～複数選択可能（線画が分かれている場合等）～', 
-                name_list, 
-            )
             line_img = Image.new("RGBA", psd_composite.size, (255, 255, 255, 0))
+            
             if selected_layers:
                 #選択レイヤーが変更されていないかを確認
                 if selected_layers == st.session_state.selected_layers:
-                    line_img = st.session_state.line_img
-                else:
                     #========================================
                     # 「線画の合成」
                     #========================================
