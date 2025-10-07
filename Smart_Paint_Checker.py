@@ -201,15 +201,24 @@ if selected == 'ツールを使用する':
     #ファイルのアップロード
     uploaded_file = st.file_uploader('#### 使用するPSDファイルを選択してください。', type='psd')
     if uploaded_file is not None:
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        status_text.text('ファイルの読み込み中...')
+        progress_bar.progress(20)
         #ファイルのハッシュ値を計算
         uploaded_file.seek(0)
         file_hash = hashlib.sha256(uploaded_file.read()).hexdigest()
         uploaded_file.seek(0)
         current_file_hash = file_hash
+        progress_bar.progress(50)
         
         # キャッシュされたpsdを使用するか、新規に読み込む
         if (st.session_state.last_file_hash1 != current_file_hash or 
             st.session_state.psd_cache is None):
+            status_text.text('PSDファイルの処理中...')
+            progress_bar.progress(60)
+
             psd = psd_tools.PSDImage.open(uploaded_file)
             psd_composite = psd.composite()
             st.session_state.psd_cache = psd
@@ -217,6 +226,8 @@ if selected == 'ツールを使用する':
         else:
             psd = st.session_state.psd_cache
             psd_composite = st.session_state.psd_composite_cache
+
+        progress_bar.progress(70)
 
         #========================================
         # 「エラー判定」
@@ -233,19 +244,24 @@ if selected == 'ツールを使用する':
             else:
                 st.session_state.error_flag = '正常'
             st.session_state.last_file_hash1 = current_file_hash
+        status_text.text('画像を検証中...')
+        progress_bar.progress(80)
         #判定結果の出力
         if st.session_state.error_flag == 'エラー':
             st.error('透明な画像が入力されました。画像を変更してください。')
         else:
+            progress_bar.progress(100)
+            status_text.empty()
             st.success('アップロードが完了しました。')
             
             #========================================
             # 「レイヤ一覧の表示」
             #========================================
             st.markdown('''
-            <p class='my-text'>線画レイヤーの選択</p>
-            
-            #### 一覧を基に線画レイヤーを選択してください。''', unsafe_allow_html=True)
+            <p class='my-text'>線画レイヤーの選択</p>''', unsafe_allow_html=True)
+            progress_bar.empty()
+            progress_bar_line = st.progress(0)
+            status_text = st.empty()
             name_list = []
             img_list = []
             layer_number = 0
@@ -259,7 +275,9 @@ if selected == 'ツールを使用する':
                 visible_layers = [layer for layer in psd.descendants() 
                                  if not layer.is_group() and not layer.clipping_layer]
                 
-                for layer in visible_layers:
+                total_layers = len(visible_layers)
+                
+                for idx, layer in enumerate(visible_layers):
                     layer.visible = True
                     base_img = layer.composite()
                     if base_img is not None:
@@ -268,6 +286,13 @@ if selected == 'ツールを使用する':
                         resized_img = base_img.resize((150, 150), Image.Resampling.NEAREST)
                         img_list.append(resized_img)
                         layer_number += 1
+                    
+                    # プログレスバーを更新
+                    progress = int(((idx + 1) / total_layers) * 100)
+                    progress_bar_line.progress(progress)
+                    status_text.text(f'レイヤー処理中... ({idx + 1}/{total_layers})')
+                status_text.text('レイヤー処理が完了しました。線画レイヤーを選択してください。')
+                progress_bar_line.empty()
                 
                 st.session_state.name_list = name_list
                 st.session_state.img_list = img_list
@@ -475,9 +500,16 @@ if selected == 'ツールを使用する':
                             st.markdown('''
                             <p class='my-text'>消し忘れ検知システム</p>
                             <p class='box'>各値の調整</p>''', unsafe_allow_html=True)
-                            threshold2 = st.slider('###### 各検知箇所を統合する距離を調整できます。',1,300,95)
+                            padding = st.slider('###### 検知範囲の拡張幅',1,10,1)
+                            mask_size = st.slider('###### 検知対象の最大サイズ',10,500,100, step=10)
+                            mistake_threshold_black = st.slider('###### 黒線検知の厳しさ（低い値=厳しい）',10,200,50, step=10)
+                            mistake_threshold_white = st.slider('###### 白線検知の厳しさ（低い値=厳しい）',10,200,50, step=10)
                             #機能の実行
-                            result_img4 = LineDrawingMistake_Detection_System(psd, line_img, threshold2)
+
+                            result_img4 = LineDrawingMistake_Detection_System(psd, line_img, 
+                                                                              padding, mask_size, 
+                                                                              mistake_threshold_black, 
+                                                                              mistake_threshold_white)
                             st.markdown('''<p class='box2'>消し忘れ検知システムの出力結果</p>''', unsafe_allow_html=True)
                             #出力画像の表示
                             col1, col2 = st.columns(2)
