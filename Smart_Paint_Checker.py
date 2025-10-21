@@ -252,6 +252,7 @@ if selected == 'ツールを使用する':
         else:
             progress_bar.progress(100)
             status_text.empty()
+            progress_bar.empty()
             st.success('アップロードが完了しました。')
             
             #========================================
@@ -290,6 +291,7 @@ if selected == 'ツールを使用する':
                     # プログレスバーを更新
                     progress = int(((idx + 1) / total_layers) * 100)
                     progress_bar_line.progress(progress)
+                    
                     status_text.text(f'レイヤー処理中... ({idx + 1}/{total_layers})')
                 status_text.text('レイヤー処理が完了しました。線画レイヤーを選択してください。')
                 progress_bar_line.empty()
@@ -304,36 +306,61 @@ if selected == 'ツールを使用する':
                 img_list = st.session_state.img_list
                 layer_number = st.session_state.layer_number
             #レイヤー一覧の表示
-            st.text(f'レイヤー数:{layer_number}')
             cols = st.columns(10)
             selected_layers = []
 
             if "selected_layers" not in st.session_state:
                 st.session_state.selected_layers = []
-                
+
+            # レイヤー名の重複をチェックして一意のIDを作成
+            unique_layer_ids = []
+            layer_name_count = {}
+            
+            for i, layer_name in enumerate(name_list):
+                if layer_name in layer_name_count:
+                    layer_name_count[layer_name] += 1
+                    unique_id = f"{layer_name}#{layer_name_count[layer_name]}"
+                else:
+                    layer_name_count[layer_name] = 0
+                    unique_id = f"{layer_name}#0"
+                unique_layer_ids.append(unique_id)
 
             for i, img in enumerate(img_list):
                 col = cols[i % 10]
                 with col:
-                    st.image(img, caption=name_list[i], use_container_width=True)
+                    # 重複がある場合は番号付きで表示
+                    display_name = name_list[i]
+                    if layer_name_count[name_list[i]] > 0:
+                        display_name = f"{name_list[i]}"
+                    
+                    st.image(img, caption=display_name, use_container_width=True)
 
                     checked = st.checkbox("線画選択", key=f"layer_chk_{i}")
-                    layer_name = name_list[i]
+                    unique_layer_id = unique_layer_ids[i]
 
-                    if checked and layer_name not in st.session_state.selected_layers:
-                        st.session_state.selected_layers.append(layer_name) # 選択されたレイヤーを追加
-                    elif not checked and layer_name in st.session_state.selected_layers:
-                        st.session_state.selected_layers.remove(layer_name) # 選択解除されたレイヤーを削除
-
+                    if checked and unique_layer_id not in st.session_state.selected_layers:
+                        st.session_state.selected_layers.append(unique_layer_id)
+                    elif not checked and unique_layer_id in st.session_state.selected_layers:
+                        st.session_state.selected_layers.remove(unique_layer_id)
 
             st.markdown("### 選択された線画レイヤー")
             if st.session_state.selected_layers:
-                selected_cols = st.columns(10)  # 5列で並べて表示
-                for idx, layer_name in enumerate(st.session_state.selected_layers):
-                    # name_list からインデックスを取得
-                    layer_idx = name_list.index(layer_name)
-                    with selected_cols[idx % 5]:
-                        st.image(img_list[layer_idx], caption=layer_name, use_container_width=True)
+                selected_cols = st.columns(10)
+                for idx, unique_layer_id in enumerate(st.session_state.selected_layers):
+                    try:
+                        # unique_layer_idsからインデックスを取得
+                        layer_idx = unique_layer_ids.index(unique_layer_id)
+                        layer_name = name_list[layer_idx]
+                        
+                        # 表示名を作成
+                        display_name = layer_name
+                        if layer_name_count[layer_name] > 0:
+                            display_name = f"{layer_name}" 
+                        with selected_cols[idx % 5]:
+                            st.image(img_list[layer_idx], caption=display_name, use_container_width=True)
+                    except ValueError:
+                        # レイヤーが見つからない場合はスキップ
+                        continue
             else:
                 st.info("まだレイヤーが選択されていません。")
             selected_layers = st.session_state.selected_layers
@@ -343,20 +370,29 @@ if selected == 'ツールを使用する':
             #レイヤーの選択
             line_img = Image.new("RGBA", psd_composite.size, (255, 255, 255, 0))
             
-            if selected_layers:
-                #選択レイヤーが変更されていないかを確認
-                if selected_layers == st.session_state.selected_layers:
-                    #========================================
-                    # 「線画の合成」
-                    #========================================
-                    for layer in psd.descendants():
-                        for item in selected_layers:
-                            if layer.name == item and not layer.is_group():
-                                layer_img = layer.composite()
-                                line_img.paste(layer_img, (layer.left, layer.top), layer_img)
-                    #セッション変数を更新（線画レイヤーの選択用）
-                    st.session_state.selected_layers = selected_layers
-                    st.session_state.line_img = line_img
+            if st.session_state.selected_layers:
+                # 選択されたレイヤーの合成
+                for unique_layer_id in st.session_state.selected_layers:
+                    try:
+                        # unique_layer_idsからインデックスを取得
+                        layer_idx = unique_layer_ids.index(unique_layer_id)
+                        original_layer_name = name_list[layer_idx]
+                        
+                        # PSDから対応するレイヤーを検索（インデックスベース）
+                        layer_count = 0
+                        target_index = int(unique_layer_id.split('#')[1])
+                        
+                        for layer in psd.descendants():
+                            if layer.name == original_layer_name and not layer.is_group():
+                                if layer_count == target_index:
+                                    layer_img = layer.composite()
+                                    if layer_img:
+                                        line_img.paste(layer_img, (layer.left, layer.top), layer_img)
+                                    break
+                                layer_count += 1
+                    except (ValueError, IndexError):
+                        continue
+                        
                 line_resized = line_img.resize((256, 256), Image.LANCZOS)
                 st.markdown('''<p class='box'>選択された線画レイヤー画像</p>''', unsafe_allow_html=True)
                 st.image(line_resized)
@@ -475,13 +511,17 @@ if selected == 'ツールを使用する':
                             st.markdown('''
                             <p class='my-text'>塗り漏れ検知システム</p> 
                             <p class='box'>各値の調整</p>''', unsafe_allow_html=True)
+                            reload = False
                             tolerance = st.slider('###### 「塗り漏れ」と判定する色の許容誤差を調整できます。',0,50,5)
                             circle_radius = st.slider('###### 「塗り漏れ」判定箇所の円の半径を調整できます。',10,100,50)
                             max_region_size = st.slider('###### 「塗り漏れ」と判定する領域のサイズを調整できます。',100,1000,500)
                             st.markdown('''<p class='box'>各素材の色を選択</p>''', unsafe_allow_html=True)
                             color2 = st.color_picker('###### 「塗り漏れ」検出箇所の色が変化します。', '#FF00FF')
+
+                            st.caption('###### 出力結果が上手く表示されない場合には、以下の再実行ボタンを押してください。(再出力に数秒かかります)')
+                            reload = st.button('###### 再実行', key='reload_missing')
                             #機能の実行
-                            result_img3 = MissingPaint_Detection_System(psd, color2, tolerance, circle_radius, max_region_size)
+                            result_img3 = MissingPaint_Detection_System(psd, color2, tolerance, circle_radius, max_region_size, reload)
                             st.markdown('''<p class='box2'>塗り漏れ検知システムの出力結果</p>''', unsafe_allow_html=True)
                             #出力画像の表示
                             col1, col2 = st.columns(2)
@@ -500,16 +540,15 @@ if selected == 'ツールを使用する':
                             st.markdown('''
                             <p class='my-text'>消し忘れ検知システム</p>
                             <p class='box'>各値の調整</p>''', unsafe_allow_html=True)
-                            padding = st.slider('###### 検知範囲の拡張幅',1,10,1)
-                            mask_size = st.slider('###### 検知対象の最大サイズ',10,500,100, step=10)
-                            mistake_threshold_black = st.slider('###### 黒線検知の厳しさ（低い値=厳しい）',10,200,50, step=10)
-                            mistake_threshold_white = st.slider('###### 白線検知の厳しさ（低い値=厳しい）',10,200,50, step=10)
-                            #機能の実行
+                            padding = st.slider('###### 検知範囲の拡張幅()', 
+                                                1,10,3)
+                            mask_size = st.slider('###### 検知対象の最大サイズ',10,1000,500, step=10)
+                            gaussian_blur = st.radio('###### ガウシアンブラーを適用する(精度向上が見込めますが、見落としも発生しやすくなります)', 
+                                                     options=['ON', 'OFF'], index=1, horizontal=True)
 
                             result_img4 = LineDrawingMistake_Detection_System(psd, line_img, 
                                                                               padding, mask_size, 
-                                                                              mistake_threshold_black, 
-                                                                              mistake_threshold_white)
+                                                                              gaussian_blur)
                             st.markdown('''<p class='box2'>消し忘れ検知システムの出力結果</p>''', unsafe_allow_html=True)
                             #出力画像の表示
                             col1, col2 = st.columns(2)

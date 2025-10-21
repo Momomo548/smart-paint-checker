@@ -2,13 +2,15 @@ from PIL import Image, ImageDraw
 import numpy as np
 from scipy.ndimage import label
 
-def MissingPaint_Detection_System(psd, color, tolerance, circle_radius, max_region_size):
+def MissingPaint_Detection_System(psd, color, tolerance, circle_radius, max_region_size, reload):
 #仮引数：psdファイル、検知箇所カラー、色の許容誤差、円の半径、塗り漏れと判定する領域のサイズ
+#---------リロード--------
+    RELOAD = reload
 
 #------領域検出の設定------
     COLOR = color  # 検知対象とする色
     TOLERANCE = tolerance  # 色の許容誤差
-    MAX_REGION_SIZE = 10000  # 塗り漏れと判定する領域のサイズ
+    MAX_REGION_SIZE = max_region_size  # 塗り漏れと判定する領域のサイズ
     
 #------円の設定------
     CIRCLE_RADIUS = circle_radius  # 円の半径
@@ -29,10 +31,25 @@ def MissingPaint_Detection_System(psd, color, tolerance, circle_radius, max_regi
     psd_width, psd_height = psd.width, psd.height
     background_img = Image.new("RGB", (psd_width, psd_height), COLOR)
     background_img_rgba = background_img.convert("RGBA")
+    composite_layer = Image.new("RGBA", (psd_width, psd_height), (0, 0, 0, 0))
 
 #------既存レイヤーの合成------
-    existing_layers = psd.topil()
-    result_image = Image.alpha_composite(background_img_rgba, existing_layers.convert("RGBA"))
+    if not RELOAD: #従来の合成処理
+        existing_layers = psd.topil()
+        result_image = Image.alpha_composite(background_img_rgba, existing_layers.convert("RGBA"))
+
+    if RELOAD: #従来の合成処理が不十分な場合のリロード処理
+        for layer in psd.descendants():
+            if layer.kind == 'pixel' and layer.visible == True:
+                left, top, right, bottom = layer.bbox
+                composite_layer.paste(layer.composite(), (left, top), layer.composite())
+        composite_result = composite_layer.convert("RGBA")
+        background_img_rgba.paste(composite_result, (0, 0), composite_result)
+        result_image = background_img_rgba
+
+    composite_result = composite_layer.convert("RGBA")
+    background_img_rgba.paste(composite_result, (0, 0), composite_result)
+    result_image = background_img_rgba
 
 #------蛍光色領域の検出------
     img_array = np.array(result_image.convert("RGB"))
