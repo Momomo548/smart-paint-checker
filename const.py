@@ -25,7 +25,7 @@ OPTION_MENU_CONFIG = {
     "options": ["HOME", "機能詳細と使用例", "ツールを使用する"],
     "icons": ["bi-house", "bi-wrench", "map", "bi-rewind-fill"],
     "menu_icon": "bi-vector-pen",
-    "default_index": 0,
+    "default_index": 2,
     "orientation": "horizontal",
     "styles": {
         "container": {
