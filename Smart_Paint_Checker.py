@@ -17,12 +17,9 @@ from streamlit_image_select import image_select
 from functions import (
     MissingPaint_Detection_System,
     LineDrawingMistake_Detection_System,
-    LineDrawMisDetect_FromRatio,
-    KP,
     Layers_Contour_System,
     Colors_Display_System,
-    Black_Layer_Extraction_System,
-    Get_Black_Layer_Images
+    Black_Layer_Extraction_System
 )
 
 
@@ -559,15 +556,17 @@ if selected == 'ツールを使用する':
                             st.markdown('''
                             <p class='my-text'>消し忘れ検知システム</p>
                             <p class='box'>各値の調整</p>''', unsafe_allow_html=True)
-                            padding = st.slider('###### 検知範囲の拡張幅', 
-                                                1,10,3)
-                            mask_size = st.slider('###### 検知対象の最大サイズ',10,1000,500, step=10)
-                            gaussian_blur = st.radio('###### ガウシアンブラーを適用する', 
-                                                     options=['ON', 'OFF'], index=1, horizontal=True)
+                            padding = st.slider('###### 検知回数の設定', 1, 25, 25,
+                                                help= '値が高い程複数検査を行い精度が向上しますが、処理時間も長くなります。')
+                            mask_size = st.slider('###### 検知対象の最大サイズ', 10, 1000, 750, step=10)
+                            line_color = st.radio('###### 線画の色を選択', 
+                                                     options=['RED', 'GREEN', 'BLUE'], index=2, horizontal=True)
+                            circle_color = st.radio('###### 円の色を選択', 
+                                                     options=['RED', 'GREEN', 'BLUE'], index=0, horizontal=True)
 
                             result_img4 = LineDrawingMistake_Detection_System(psd, line_img, 
                                                                               padding, mask_size, 
-                                                                              gaussian_blur)
+                                                                              line_color, circle_color)
                             st.markdown('''<p class='box2'>消し忘れ検知システムの出力結果</p>''', unsafe_allow_html=True)
                             #出力画像の表示
                             col1, col2 = st.columns(2)
