@@ -3,5 +3,5 @@ streamlit_option_menu==0.3.0
 psd_tools==1.9.32
 pillow==10.3.0
 numpy
-opencv-python-headless==4.10.0.84
+opencv-contrib-python-headless==4.10.0.84
 scipy

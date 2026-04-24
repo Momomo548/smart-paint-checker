@@ -17,8 +17,12 @@ from streamlit_image_select import image_select
 from functions import (
     MissingPaint_Detection_System,
     LineDrawingMistake_Detection_System,
+    LineDrawMisDetect_FromRatio,
+    KP,
     Layers_Contour_System,
-    Colors_Display_System
+    Colors_Display_System,
+    Black_Layer_Extraction_System,
+    Get_Black_Layer_Images
 )
 
 
@@ -220,6 +224,18 @@ if selected == 'ツールを使用する':
             progress_bar.progress(60)
 
             psd = psd_tools.PSDImage.open(uploaded_file)
+            
+            # レイヤー数を取得
+            all_layers = [layer for layer in psd.descendants() if not layer.is_group()]
+            total_layers = len(all_layers)
+            
+            # 黒色レイヤーの検出
+            black_threshold = 50
+            black_layers_info = Black_Layer_Extraction_System(psd, black_threshold)
+            detected_layers = black_layers_info['count']
+            
+            status_text.text(f'PSDファイルの処理中... ({detected_layers}/{total_layers})')
+            
             psd_composite = psd.composite()
             st.session_state.psd_cache = psd
             st.session_state.psd_composite_cache = psd_composite
@@ -272,28 +288,34 @@ if selected == 'ツールを使用する':
                 img_list = []
                 layer_number = 0
                 
-                # レイヤー処理を最適化
-                visible_layers = [layer for layer in psd.descendants() 
-                                 if not layer.is_group() and not layer.clipping_layer]
+                # 黒色レイヤーの抽出処理
+                progress_bar_line.progress(30)
                 
-                total_layers = len(visible_layers)
+                black_threshold = 50  # 黒色判定の閾値
+                black_layers_info = Black_Layer_Extraction_System(psd, black_threshold)
                 
-                for idx, layer in enumerate(visible_layers):
-                    layer.visible = True
+                progress_bar_line.progress(70)
+                
+                # 抽出された黒色レイヤーのみを使用
+                total_black_layers = len(black_layers_info['layer_list'])
+                
+                for idx, layer_info in enumerate(black_layers_info['layer_list']):
+                    layer = layer_info['layer']
                     base_img = layer.composite()
                     if base_img is not None:
-                        name_list.append(layer.name)
+                        name_list.append(layer_info['name'])
                         # リサイズ処理を最適化
                         resized_img = base_img.resize((150, 150), Image.Resampling.NEAREST)
                         img_list.append(resized_img)
                         layer_number += 1
                     
                     # プログレスバーを更新
-                    progress = int(((idx + 1) / total_layers) * 100)
+                    progress = 70 + int(((idx + 1) / total_black_layers) * 30)
                     progress_bar_line.progress(progress)
-                    
-                    status_text.text(f'レイヤー処理中... ({idx + 1}/{total_layers})')
-                status_text.text('レイヤー処理が完了しました。線画レイヤーを選択してください。')
+                    # ステータステキストに処理進捗を表示
+                    status_text.text(f'線画レイヤーを抽出中...  ({idx + 1} / {total_black_layers})')
+                
+                status_text.text(f'レイヤー処理完了. 線画レイヤーを選択してください')
                 progress_bar_line.empty()
                 
                 st.session_state.name_list = name_list
@@ -333,7 +355,7 @@ if selected == 'ツールを使用する':
                     if layer_name_count[name_list[i]] > 0:
                         display_name = f"{name_list[i]}"
                     
-                    st.image(img, caption=display_name, use_container_width=True)
+                    st.image(img, caption=display_name, use_column_width=True)
 
                     checked = st.checkbox("線画選択", key=f"layer_chk_{i}")
                     unique_layer_id = unique_layer_ids[i]
@@ -357,7 +379,7 @@ if selected == 'ツールを使用する':
                         if layer_name_count[layer_name] > 0:
                             display_name = f"{layer_name}" 
                         with selected_cols[idx % 5]:
-                            st.image(img_list[layer_idx], caption=display_name, use_container_width=True)
+                            st.image(img_list[layer_idx], caption=display_name, width=500, use_column_width=True)
                     except ValueError:
                         # レイヤーが見つからない場合はスキップ
                         continue
@@ -438,9 +460,9 @@ if selected == 'ツールを使用する':
                             #出力画像の表示
                             col1, col2 = st.columns(2)
                             with col1:
-                                st.image(psd_composite, caption='元イラスト', use_container_width=True)
+                                st.image(psd_composite, caption='元イラスト', use_column_width=True)
                             with col2:
-                                st.image(result_img1, caption='出力結果', use_container_width=True)
+                                st.image(result_img1, caption='出力結果', use_column_width=True)
                             result_buf1 = BytesIO()
                             result_img1.save(result_buf1, format='PNG')
                             result_buf1.seek(0)
@@ -497,16 +519,16 @@ if selected == 'ツールを使用する':
                             #出力画像の表示
                             col1, col2 = st.columns(2)
                             with col1:
-                                st.image(psd_composite, caption='元イラスト', use_container_width=True)
+                                st.image(psd_composite, caption='元イラスト', use_column_width=True)
                             with col2:
-                                st.image(result_img2, caption='出力結果', use_container_width=True)
+                                st.image(result_img2, caption='出力結果', use_column_width=True)
                             result_buf2 = BytesIO()
                             result_img2.save(result_buf2, format='PNG')
                             result_buf2.seek(0)
                             #zipファイルに追加
                             zip_file.writestr('layerDisplaySystem_result.png', result_buf2.getvalue())
                             
-                        #塗り漏れ検知システム
+#塗り漏れ検知システム
                         elif function == 'MissingPaint_Detection_System':
                             st.markdown('''
                             <p class='my-text'>塗り漏れ検知システム</p> 
@@ -517,33 +539,30 @@ if selected == 'ツールを使用する':
                             max_region_size = st.slider('###### 「塗り漏れ」と判定する領域のサイズを調整できます。',100,1000,500)
                             st.markdown('''<p class='box'>各素材の色を選択</p>''', unsafe_allow_html=True)
                             color2 = st.color_picker('###### 「塗り漏れ」検出箇所の色が変化します。', '#FF00FF')
-
-                            st.caption('###### 出力結果が上手く表示されない場合には、以下の再実行ボタンを押してください。(再出力に数秒かかります)')
-                            reload = st.button('###### 再実行', key='reload_missing')
                             #機能の実行
-                            result_img3 = MissingPaint_Detection_System(psd, color2, tolerance, circle_radius, max_region_size, reload)
+                            result_img3 = MissingPaint_Detection_System(psd, color2, tolerance, circle_radius, max_region_size)
                             st.markdown('''<p class='box2'>塗り漏れ検知システムの出力結果</p>''', unsafe_allow_html=True)
                             #出力画像の表示
                             col1, col2 = st.columns(2)
                             with col1:
-                                st.image(psd_composite, caption='元イラスト', use_container_width=True)
+                                st.image(psd_composite, caption='元イラスト', use_column_width=True)
                             with col2:
-                                st.image(result_img3, caption='出力結果', use_container_width=True)
+                                st.image(result_img3, caption='出力結果', use_column_width=True)
                             result_buf3 = BytesIO()
                             result_img3.save(result_buf3, format='PNG')
                             result_buf3.seek(0)
                             #zipファイルに追加
                             zip_file.writestr('missingPaintDetectionSystem_result.png', result_buf3.getvalue())
                         
-                        #消し忘れ検知システム
+#消し忘れ検知システム
                         elif function == 'LineDrawingMistake_Detection_System':
                             st.markdown('''
                             <p class='my-text'>消し忘れ検知システム</p>
                             <p class='box'>各値の調整</p>''', unsafe_allow_html=True)
-                            padding = st.slider('###### 検知範囲の拡張幅()', 
+                            padding = st.slider('###### 検知範囲の拡張幅', 
                                                 1,10,3)
                             mask_size = st.slider('###### 検知対象の最大サイズ',10,1000,500, step=10)
-                            gaussian_blur = st.radio('###### ガウシアンブラーを適用する(精度向上が見込めますが、見落としも発生しやすくなります)', 
+                            gaussian_blur = st.radio('###### ガウシアンブラーを適用する', 
                                                      options=['ON', 'OFF'], index=1, horizontal=True)
 
                             result_img4 = LineDrawingMistake_Detection_System(psd, line_img, 
@@ -553,9 +572,9 @@ if selected == 'ツールを使用する':
                             #出力画像の表示
                             col1, col2 = st.columns(2)
                             with col1:
-                                st.image(psd_composite, caption='元イラスト', use_container_width=True)
+                                st.image(psd_composite, caption='元イラスト', use_column_width=True)
                             with col2:
-                                st.image(result_img4, caption='出力結果', use_container_width=True)
+                                st.image(result_img4, caption='出力結果', use_column_width=True)
                             result_buf4 = BytesIO()
                             result_img4.save(result_buf4, format='PNG')
                             result_buf4.seek(0)
